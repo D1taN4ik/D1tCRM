@@ -1,0 +1,54 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+
+<header class="navbar">
+    <div class="nav-inner">
+
+        <a href="/" class="logo">
+            <img src="logo.png" class="logo-img" />
+
+            <div class="logo-text">
+                <span class="logo-title">D1tCRM</span>
+                <span class="logo-sub">Система управления</span>
+            </div>
+        </a>
+
+        <AuthorizeView>
+            <Authorized Context="auth">
+
+                <nav class="nav-links">
+
+                    <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">Главная</NavLink>
+
+                    <AuthorizeView Roles="Admin,Manager">
+                        <NavLink class="nav-link" href="/employees">Сотрудники</NavLink>
+                        <NavLink class="nav-link" href="/projects">Проекты</NavLink>
+                        <NavLink class="nav-link" href="/tasks">Задачи</NavLink>
+                    </AuthorizeView>
+
+                    <AuthorizeView Roles="Employee">
+                        <NavLink class="nav-link" href="/projects">Мои проекты</NavLink>
+                        <NavLink class="nav-link" href="/tasks">Мои задачи</NavLink>
+                    </AuthorizeView>
+
+                    <NavLink class="nav-link" href="/profile">Профиль</NavLink>
+                    <NavLink class="nav-link" href="/logout">Выход</NavLink>
+
+                </nav>
+
+                <div class="user">
+                    <div class="user-dot"></div>
+                    <span>@auth.User.Identity?.Name</span>
+                </div>
+
+            </Authorized>
+
+            <NotAuthorized>
+                <nav class="nav-links">
+                    <NavLink class="nav-link" href="/login">Вход</NavLink>
+                </nav>
+            </NotAuthorized>
+
+        </AuthorizeView>
+
+    </div>
+</header>

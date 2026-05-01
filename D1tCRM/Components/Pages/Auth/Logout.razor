@@ -1,0 +1,22 @@
+﻿@page "/logout"
+@using D1tCRM.Data.Entities
+@using Microsoft.AspNetCore.Identity
+<PageTitle>Выход из системы D1tCRM</PageTitle>
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<div class="logout-page">
+    <div class="logout-card">
+        <img src="/logo.png" alt="D1tCRM" />
+        <h3>Выход из системы...</h3>
+        <p>Сессия завершается, выполняется переход на страницу входа.</p>
+    </div>
+</div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await SignInManager.SignOutAsync();
+        Navigation.NavigateTo("/login", true);
+    }
+}

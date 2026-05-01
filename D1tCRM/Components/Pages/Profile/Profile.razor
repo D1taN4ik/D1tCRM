@@ -1,0 +1,283 @@
+﻿@page "/profile"
+@rendermode InteractiveServer
+@attribute [Authorize]
+
+@using D1tCRM.Data.Entities
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using D1tCRM.Data
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject AppDbContext Db
+@inject NavigationManager Navigation
+
+<PageTitle>Профиль - D1tCRM</PageTitle>
+
+<div class="profile-page">
+
+    <section class="hero-card">
+        <div>
+            <p class="eyebrow">D1tCRM / Профиль</p>
+            <h1>Мой профиль</h1>
+            <p>Личная информация сотрудника, данные аккаунта и роль доступа в системе.</p>
+        </div>
+    </section>
+
+    @if (isLoading)
+    {
+        <section class="profile-card">
+            <p class="muted">Загрузка профиля...</p>
+        </section>
+    }
+    else if (employee is null || user is null)
+    {
+        <section class="profile-card">
+            <h2>Профиль не найден</h2>
+            <p class="muted">Не удалось найти данные сотрудника для текущего пользователя.</p>
+        </section>
+    }
+    else
+    {
+        <section class="profile-grid">
+
+            <!-- ЛЕВАЯ КОЛОНКА -->
+            <div class="profile-main">
+
+                <div class="profile-card main-profile-card">
+                    <div class="avatar">
+                        @GetInitials(employee)
+                    </div>
+
+                    <div class="profile-main-info">
+                        <h2>@employee.LastName @employee.FirstName @employee.MiddleName</h2>
+                        <p>@employee.Position</p>
+                    </div>
+                </div>
+
+                <div class="profile-card">
+                    <h3>Данные сотрудника</h3>
+
+                    <div class="info-list">
+                        <div class="info-row">
+                            <span>ФИО</span>
+                            <strong>@employee.LastName @employee.FirstName @employee.MiddleName</strong>
+                        </div>
+
+                        <div class="info-row">
+                            <span>Должность</span>
+                            <strong>@employee.Position</strong>
+                        </div>
+
+                        <div class="info-row">
+                            <span>Зарплата</span>
+                            <strong>@employee.Salary.ToString("N0") ₽</strong>
+                        </div>
+
+                        <div class="info-row">
+                            <span>Статус</span>
+                            <strong>@(employee.IsActive ? "Активен" : "Отключён")</strong>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ПРАВАЯ КОЛОНКА -->
+            <div class="profile-side">
+
+                <div class="profile-card role-card">
+                    <span>Роль</span>
+                    <strong>@TranslateRole(role)</strong>
+                    <p>@GetRoleDescription(role)</p>
+                </div>
+
+                <div class="profile-card">
+                    <h3>Аккаунт</h3>
+
+                    <div class="info-list">
+                        <div class="info-row">
+                            <span>Email</span>
+                            <strong>@user.Email</strong>
+                        </div>
+
+                        <div class="info-row">
+                            <span>Email подтверждён</span>
+                            <strong>@(user.EmailConfirmed ? "Да" : "Нет")</strong>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+        <section class="work-grid">
+
+            <div class="profile-card">
+                <h3>Проекты сотрудника</h3>
+
+                @if (employeeProjects.Count == 0)
+                {
+                    <p class="muted">Сотрудник пока не назначен ни на один проект.</p>
+                }
+                else
+                {
+                    <div class="work-list">
+                        @foreach (var project in employeeProjects)
+                        {
+                            <a class="work-item" href="/projects">
+                                <div>
+                                    <strong>@project.Name</strong>
+                                    <span>@TranslateProjectStatus(project.Status)</span>
+                                </div>
+
+                                <small>@(project.EndDate?.ToShortDateString() ?? "Без срока")</small>
+                            </a>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="profile-card">
+                <h3>Задачи сотрудника</h3>
+
+                @if (employeeTasks.Count == 0)
+                {
+                    <p class="muted">Сотруднику пока не назначены задачи.</p>
+                }
+                else
+                {
+                    <div class="work-list">
+                        @foreach (var task in employeeTasks)
+                        {
+                            <a class="work-item" href="/tasks">
+                                <div>
+                                    <strong>@task.Title</strong>
+                                    <span>@TranslateTaskStatus(task.Status)</span>
+                                </div>
+
+                                <small>@(task.EndDate?.ToShortDateString() ?? "Без срока")</small>
+                            </a>
+                        }
+                    </div>
+                }
+            </div>
+
+        </section>
+    }
+
+</div>
+
+@code {
+    private bool isLoading = true;
+    private List<Project> employeeProjects = new();
+    private List<WorkTask> employeeTasks = new();
+    private ApplicationUser? user;
+    private Employee? employee;
+    private string role = "Employee";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var principal = authState.User;
+
+        if (principal.Identity?.IsAuthenticated != true)
+        {
+            Navigation.NavigateTo("/login", true);
+            return;
+        }
+
+        user = await UserManager.GetUserAsync(principal);
+
+        if (user is null)
+        {
+            isLoading = false;
+            return;
+        }
+
+        employee = await Db.Employees
+            .Include(e => e.User)
+            .FirstOrDefaultAsync(e => e.Id == user.EmployeeId);
+
+        var roles = await UserManager.GetRolesAsync(user);
+        role = roles.FirstOrDefault() ?? "Employee";
+
+        if (employee is not null)
+        {
+            employeeProjects = await Db.EmployeeProjects
+                .Where(ep => ep.EmployeeId == employee.Id)
+                .Include(ep => ep.Project)
+                .Select(ep => ep.Project)
+                .ToListAsync();
+
+            employeeTasks = await Db.EmployeeTasks
+                .Where(et => et.EmployeeId == employee.Id)
+                .Include(et => et.WorkTask)
+                    .ThenInclude(t => t.Project)
+                .Select(et => et.WorkTask)
+                .ToListAsync();
+        }
+
+        isLoading = false;
+    }
+
+    private static string GetRoleDescription(string role)
+    {
+        return role switch
+        {
+            "Admin" => "Полный доступ к управлению системой.",
+            "Manager" => "Управление проектами, задачами и сотрудниками.",
+            "Employee" => "Доступ к своим проектам и задачам.",
+            _ => "Базовый уровень доступа."
+        };
+    }
+
+    private static string GetInitials(Employee employee)
+    {
+        var last = string.IsNullOrWhiteSpace(employee.LastName)
+            ? ""
+            : employee.LastName[0].ToString();
+
+        var first = string.IsNullOrWhiteSpace(employee.FirstName)
+            ? ""
+            : employee.FirstName[0].ToString();
+
+        return $"{last}{first}".ToUpper();
+    }
+
+    private static string TranslateRole(string role)
+    {
+        return role switch
+        {
+            "Admin" => "Администратор",
+            "Manager" => "Менеджер",
+            "Employee" => "Сотрудник",
+            _ => role
+        };
+    }
+    private static string TranslateProjectStatus(string status)
+    {
+        return status switch
+        {
+            "Active" => "Активен",
+            "Paused" => "Приостановлен",
+            "Completed" => "Завершён",
+            "Cancelled" => "Отменён",
+            _ => status
+        };
+    }
+
+    private static string TranslateTaskStatus(string status)
+    {
+        return status switch
+        {
+            "New" => "Новая",
+            "InProgress" => "В работе",
+            "Review" => "На проверке",
+            "Done" => "Выполнена",
+            "Cancelled" => "Отменена",
+            _ => status
+        };
+    }
+}

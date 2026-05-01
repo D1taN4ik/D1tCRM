@@ -1,0 +1,207 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@attribute [Authorize]
+
+@using D1tCRM.Data.Entities
+@using D1tCRM.Services.Employees
+@using D1tCRM.Services.Projects
+@using D1tCRM.Services.Tasks
+
+@inject IEmployeeService EmployeeService
+@inject IProjectService ProjectService
+@inject ITaskService TaskService
+
+<PageTitle>Главная - D1tCRM</PageTitle>
+
+<div class="home-page">
+
+    <section class="hero-card">
+        <div>
+            <p class="eyebrow">D1tCRM / Главная</p>
+            <h1>Главная панель</h1>
+            <p>
+                Общая сводка по сотрудникам, проектам, задачам и текущей активности системы.
+            </p>
+        </div>
+    </section>
+
+    <section class="stats-grid">
+        <div class="stat-card">
+            <span>Сотрудников</span>
+            <strong>@employeesCount</strong>
+        </div>
+
+        <div class="stat-card">
+            <span>Проектов</span>
+            <strong>@projectsCount</strong>
+        </div>
+
+        <div class="stat-card">
+            <span>Задач</span>
+            <strong>@tasksCount</strong>
+        </div>
+    </section>
+
+    <section class="tables-grid">
+
+        <div class="panel-card">
+            <div class="panel-header">
+                <h2>Проекты</h2>
+                <a href="/projects">Открыть все</a>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Проект</th>
+                        <th>Статус</th>
+                        <th>Дедлайн</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var project in latestProjects)
+                    {
+                        <tr class="clickable-row" @onclick="() => GoToProjects()">
+                            <td>@project.Name</td>
+                            <td>
+                                <span class="status">@TranslateProjectStatus(project.Status)</span>
+                            </td>
+                            <td>@(project.EndDate?.ToShortDateString() ?? "Без срока")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="panel-card">
+            <div class="panel-header">
+                <h2>Задачи</h2>
+                <a href="/tasks">Открыть все</a>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Задача</th>
+                        <th>Статус</th>
+                        <th>Дедлайн</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var task in latestTasks)
+                    {
+                        <tr class="clickable-row" @onclick="() => GoToTasks()">
+                            <td>@task.Title</td>
+                            <td>
+                                <span class="status">@TranslateTaskStatus(task.Status)</span>
+                            </td>
+                            <td>@(task.EndDate?.ToShortDateString() ?? "Без срока")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+    </section>
+
+    <section class="status-grid">
+
+        <div class="panel-card">
+            <h2>Статистика проектов</h2>
+
+            @foreach (var item in projectStatusStats)
+            {
+                <div class="status-row">
+                    <span>@TranslateProjectStatus(item.Key)</span>
+                    <strong>@item.Value</strong>
+                </div>
+            }
+        </div>
+
+        <div class="panel-card">
+            <h2>Статистика задач</h2>
+
+            @foreach (var item in taskStatusStats)
+            {
+                <div class="status-row">
+                    <span>@TranslateTaskStatus(item.Key)</span>
+                    <strong>@item.Value</strong>
+                </div>
+            }
+        </div>
+
+    </section>
+
+</div>
+
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    private int employeesCount;
+    private int projectsCount;
+    private int tasksCount;
+
+    private List<Project> latestProjects = new();
+    private List<WorkTask> latestTasks = new();
+
+    private Dictionary<string, int> projectStatusStats = new();
+    private Dictionary<string, int> taskStatusStats = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var employees = await EmployeeService.GetAllAsync();
+        var projects = await ProjectService.GetAllAsync();
+        var tasks = await TaskService.GetAllAsync();
+
+        employeesCount = employees.Count;
+        projectsCount = projects.Count;
+        tasksCount = tasks.Count;
+
+        latestProjects = projects
+            .OrderBy(p => p.EndDate ?? DateTime.MaxValue)
+            .Take(5)
+            .ToList();
+
+        latestTasks = tasks
+            .OrderBy(t => t.EndDate ?? DateTime.MaxValue)
+            .Take(5)
+            .ToList();
+
+        projectStatusStats = projects
+            .GroupBy(p => p.Status)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        taskStatusStats = tasks
+            .GroupBy(t => t.Status)
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
+    private void GoToProjects() => Navigation.NavigateTo("/projects");
+
+    private void GoToTasks() => Navigation.NavigateTo("/tasks");
+
+    private static string TranslateProjectStatus(string status)
+    {
+        return status switch
+        {
+            "Active" => "Активен",
+            "Paused" => "Приостановлен",
+            "Completed" => "Завершён",
+            "Cancelled" => "Отменён",
+            _ => status
+        };
+    }
+
+    private static string TranslateTaskStatus(string status)
+    {
+        return status switch
+        {
+            "New" => "Новая",
+            "InProgress" => "В работе",
+            "Review" => "На проверке",
+            "Done" => "Выполнена",
+            "Cancelled" => "Отменена",
+            _ => status
+        };
+    }
+}

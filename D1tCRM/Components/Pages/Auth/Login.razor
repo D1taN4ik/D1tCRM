@@ -1,0 +1,76 @@
+﻿@page "/login"
+
+@using System.ComponentModel.DataAnnotations
+@using D1tCRM.Data.Entities
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Components
+<PageTitle>Авторизация в системе D1tCRM</PageTitle>
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+<div class="auth-page">
+    <div class="auth-card">
+        <div class="auth-logo">
+            <img src="/logo.png" alt="D1tCRM" />
+        </div>
+
+        <h3>Вход в D1tCRM</h3>
+        <p class="auth-subtitle">Авторизация в CRM-системе</p>
+
+        <EditForm Model="Input" FormName="loginForm" OnValidSubmit="LoginUser" method="post">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <InputText class="auth-input" @bind-Value="Input.Email" placeholder="Email" />
+            <InputText class="auth-input" @bind-Value="Input.Password" type="password" placeholder="Пароль" />
+
+            <button class="auth-button" type="submit">Войти</button>
+        </EditForm>
+
+        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            <p class="auth-error">@ErrorMessage</p>
+        }
+    </div>
+</div>
+@code {
+    [SupplyParameterFromForm(FormName = "loginForm")]
+    public LoginInput? Input { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Input ??= new LoginInput();
+    }
+    private string? ErrorMessage;
+
+    private async Task LoginUser()
+    {
+        var user = await SignInManager.UserManager.FindByEmailAsync(Input.Email);
+
+        if (user == null)
+        {
+            ErrorMessage = "Пользователь не найден";
+            return;
+        }
+
+        var result = await SignInManager.CheckPasswordSignInAsync(
+            user,
+            Input.Password,
+            false
+        );
+
+        if (!result.Succeeded)
+        {
+            ErrorMessage = "Неверный логин или пароль";
+            return;
+        }
+
+        await SignInManager.SignInAsync(user, true);
+        Navigation.NavigateTo("/", true);
+    }
+
+    public class LoginInput
+    {
+        [Required] public string Email { get; set; } = "";
+        [Required] public string Password { get; set; } = "";
+    }
+}

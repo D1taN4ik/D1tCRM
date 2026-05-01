@@ -1,0 +1,323 @@
+﻿@page "/projects"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin,Manager,Employee")]
+<PageTitle>Проекты - D1tCRM</PageTitle>
+
+@using D1tCRM.Data.Entities
+@using D1tCRM.Services.Projects
+@using D1tCRM.Services.Employees
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject IEmployeeService EmployeeService
+@inject IProjectService ProjectService
+
+<div class="projects-page">
+
+    <section class="hero-card">
+        <div>
+            <p class="eyebrow">D1tCRM / Проекты</p>
+            <h1>Проекты</h1>
+            <p>Управление проектами, сроками, статусами и участниками команды.</p>
+        </div>
+
+        @if (CanManageProjects)
+        {
+            <button class="primary-btn" @onclick="CreateNew">
+                ➕ Добавить проект
+            </button>
+        }
+    </section>
+
+    <section class="projects-card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Проект</th>
+                    <th>Статус</th>
+                    <th>Дата начала</th>
+                    <th>Дедлайн</th>
+                    <th>Задач</th>
+                    <th>Сотрудники</th>
+                    <th></th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var project in projects)
+                {
+                    <tr>
+                        <td>
+                            <div class="project-name">
+                                <span class="project-icon">PR</span>
+                                <div>
+                                    <strong>@project.Name</strong>
+                                    <p>@(project.Description ?? "Описание отсутствует")</p>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td>
+                            <span class="status-pill @GetProjectStatusClass(project.Status)">
+                                @TranslateProjectStatus(project.Status)
+                            </span>
+                        </td>
+
+                        <td>@project.StartDate.ToShortDateString()</td>
+                        <td>@(project.EndDate?.ToShortDateString() ?? "Без срока")</td>
+                        <td>@project.Tasks.Count</td>
+
+                        <td>
+                            <div class="employee-list">
+                                @if (project.EmployeeProjects.Any())
+                                {
+                                    @foreach (var ep in project.EmployeeProjects)
+                                    {
+                                        <span class="employee-chip">
+                                            @ep.Employee.LastName @ep.Employee.FirstName
+                                        </span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="muted">Не назначены</span>
+                                }
+                            </div>
+                        </td>
+
+                        <td class="actions-cell">
+                            @if (CanManageProjects)
+                            {
+                                <button class="secondary-btn" @onclick="async () => await Edit(project)">✏️</button>
+                            }
+
+                            @if (CanDeleteProjects)
+                            {
+                                <button class="danger-btn" @onclick="() => Delete(project.Id)">🗑</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+
+    @if (editing && CanManageProjects)
+    {
+        <section class="form-card">
+            <div class="form-header">
+                <h2>@(model.Id == 0 ? "Создать проект" : "Редактировать проект")</h2>
+                <p>Заполните данные проекта, сроки, статус и выберите сотрудников.</p>
+            </div>
+
+            <EditForm Model="model" OnValidSubmit="Save" FormName="projectForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="form-grid">
+                    <InputText class="form-input" @bind-Value="model.Name" placeholder="Название проекта" />
+
+                    <InputTextArea class="form-input textarea" @bind-Value="model.Description" placeholder="Описание проекта" />
+
+                    <div>
+                        <label>Дата начала</label>
+                        <InputDate class="form-input" @bind-Value="model.StartDate" />
+                    </div>
+
+                    <div>
+                        <label>Дата окончания</label>
+                        <InputDate class="form-input" @bind-Value="model.EndDate" />
+                    </div>
+
+                    <select class="form-input" @bind="model.Status">
+                        <option value="Active">Активен</option>
+                        <option value="Paused">Приостановлен</option>
+                        <option value="Completed">Завершён</option>
+                        <option value="Cancelled">Отменён</option>
+                    </select>
+                </div>
+
+                <div class="employees-select">
+                    <h3>Сотрудники проекта</h3>
+
+                    <div class="employees-grid">
+                        @foreach (var employee in employees)
+                        {
+                            <label class="employee-check">
+                                <input type="checkbox"
+                                       checked="@selectedEmployeeIds.Contains(employee.Id)"
+                                       @onchange="e => ToggleEmployee(employee.Id, e)" />
+
+                                <span>
+                                    <strong>@employee.LastName @employee.FirstName</strong>
+                                    <small>@employee.Position</small>
+                                </span>
+                            </label>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="primary-btn" type="submit">Сохранить</button>
+                    <button class="secondary-btn" type="button" @onclick="Cancel">Отмена</button>
+                </div>
+            </EditForm>
+        </section>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <p class="error-message">@error</p>
+    }
+
+</div>
+@code {
+    private ApplicationUser? currentUser;
+    private string currentRole = "Employee";
+
+    private bool CanManageProjects =>
+        currentRole is "Admin" or "Manager";
+
+    private bool CanDeleteProjects =>
+        currentRole is "Admin";
+    private List<Employee> employees = new();
+    private List<int> selectedEmployeeIds = new();
+    private List<Project> projects = new();
+    private Project model = new();
+    private bool editing;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUser = await UserManager.GetUserAsync(authState.User);
+
+        if (currentUser is not null)
+        {
+            var roles = await UserManager.GetRolesAsync(currentUser);
+            currentRole = roles.FirstOrDefault() ?? "Employee";
+        }
+
+        employees = await EmployeeService.GetAllAsync();
+
+        if (currentRole is "Admin" or "Manager")
+        {
+            projects = await ProjectService.GetAllAsync();
+        }
+        else if (currentUser is not null)
+        {
+            projects = await ProjectService.GetByEmployeeIdAsync(currentUser.EmployeeId);
+        }
+    }
+
+    private void CreateNew()
+    {
+        selectedEmployeeIds = new List<int>();
+
+        model = new Project
+        {
+            StartDate = DateTime.Today,
+            Status = "Active"
+        };
+
+        editing = true;
+        error = null;
+    }
+
+    private async Task Edit(Project project)
+    {
+        model = new Project
+        {
+            Id = project.Id,
+            Name = project.Name,
+            Description = project.Description,
+            StartDate = project.StartDate,
+            EndDate = project.EndDate,
+            Status = project.Status
+        };
+
+        selectedEmployeeIds = await ProjectService.GetAssignedEmployeeIdsAsync(project.Id);
+
+        editing = true;
+        error = null;
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            int projectId;
+
+            if (model.Id == 0)
+            {
+                projectId = await ProjectService.CreateAsync(model);
+            }
+            else
+            {
+                await ProjectService.UpdateAsync(model);
+                projectId = model.Id;
+            }
+
+            await ProjectService.AssignEmployeesAsync(projectId, selectedEmployeeIds);
+
+            projects = await ProjectService.GetAllAsync();
+            editing = false;
+            error = null;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task Delete(int id)
+    {
+        await ProjectService.DeleteAsync(id);
+        projects = await ProjectService.GetAllAsync();
+    }
+
+    private void Cancel()
+    {
+        editing = false;
+        error = null;
+    }
+
+    private void ToggleEmployee(int employeeId, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool value && value;
+
+        if (isChecked)
+        {
+            if (!selectedEmployeeIds.Contains(employeeId))
+                selectedEmployeeIds.Add(employeeId);
+        }
+        else
+        {
+            selectedEmployeeIds.Remove(employeeId);
+        }
+    }
+    private static string TranslateProjectStatus(string status)
+    {
+        return status switch
+        {
+            "Active" => "Активен",
+            "Paused" => "Приостановлен",
+            "Completed" => "Завершён",
+            "Cancelled" => "Отменён",
+            _ => status
+        };
+    }
+
+    private static string GetProjectStatusClass(string status)
+    {
+        return status switch
+        {
+            "Active" => "status-active",
+            "Paused" => "status-paused",
+            "Completed" => "status-completed",
+            "Cancelled" => "status-cancelled",
+            _ => ""
+        };
+    }
+}

@@ -1,0 +1,309 @@
+﻿@page "/tasks"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin,Manager,Employee")]
+<PageTitle>Задачи - D1tCRM</PageTitle>
+
+@using D1tCRM.Data.Entities
+@using D1tCRM.Services.Projects
+@using D1tCRM.Services.Tasks
+@using D1tCRM.Services.Employees
+
+@inject ITaskService TaskService
+@inject IProjectService ProjectService
+@inject IEmployeeService EmployeeService
+
+<div class="tasks-page">
+
+    <section class="hero-card">
+        <div>
+            <p class="eyebrow">D1tCRM / Задачи</p>
+            <h1>Задачи</h1>
+            <p>Планирование, контроль выполнения и назначение исполнителей.</p>
+        </div>
+
+        <button class="primary-btn" @onclick="CreateNew">
+            ➕ Добавить задачу
+        </button>
+    </section>
+
+    <section class="tasks-card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Задача</th>
+                    <th>Проект</th>
+                    <th>Статус</th>
+                    <th>Дата начала</th>
+                    <th>Дедлайн</th>
+                    <th>Исполнители</th>
+                    <th></th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var task in tasks)
+                {
+                    <tr>
+                        <td>
+                            <div class="task-name">
+                                <span class="task-icon">TS</span>
+                                <div>
+                                    <strong>@task.Title</strong>
+                                    <p>@(task.Description ?? "Описание отсутствует")</p>
+                                </div>
+                            </div>
+                        </td>
+
+                        <td>@task.Project?.Name</td>
+
+                        <td>
+                            <span class="status-pill @GetTaskStatusClass(task.Status)">
+                                @TranslateTaskStatus(task.Status)
+                            </span>
+                        </td>
+
+                        <td>@task.StartDate.ToShortDateString()</td>
+                        <td>@(task.EndDate?.ToShortDateString() ?? "Без срока")</td>
+
+                        <td>
+                            <div class="employee-list">
+                                @if (task.EmployeeTasks.Any())
+                                {
+                                    @foreach (var et in task.EmployeeTasks)
+                                    {
+                                        <span class="employee-chip">
+                                            @et.Employee.LastName @et.Employee.FirstName
+                                        </span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="muted">Не назначены</span>
+                                }
+                            </div>
+                        </td>
+
+                        <td class="actions-cell">
+                            <button class="secondary-btn" @onclick="async () => await Edit(task)">✏️</button>
+                            <button class="danger-btn" @onclick="() => Delete(task.Id)">🗑</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+
+    @if (editing)
+    {
+        <section class="form-card">
+            <div class="form-header">
+                <h2>@(model.Id == 0 ? "Создать задачу" : "Редактировать задачу")</h2>
+                <p>Заполните данные задачи, выберите проект, статус и исполнителей.</p>
+            </div>
+
+            <EditForm Model="model" OnValidSubmit="Save" FormName="taskForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="form-grid">
+                    <InputText class="form-input" @bind-Value="model.Title" placeholder="Название задачи" />
+
+                    <InputTextArea class="form-input textarea" @bind-Value="model.Description" placeholder="Описание задачи" />
+
+                    <select class="form-input" @bind="model.ProjectId">
+                        <option value="0">Выберите проект</option>
+                        @foreach (var project in projects)
+                        {
+                            <option value="@project.Id">@project.Name</option>
+                        }
+                    </select>
+
+                    <select class="form-input" @bind="model.Status">
+                        <option value="New">Новая</option>
+                        <option value="InProgress">В работе</option>
+                        <option value="Review">На проверке</option>
+                        <option value="Done">Выполнена</option>
+                        <option value="Cancelled">Отменена</option>
+                    </select>
+
+                    <div>
+                        <label>Дата начала</label>
+                        <InputDate class="form-input" @bind-Value="model.StartDate" />
+                    </div>
+
+                    <div>
+                        <label>Дата окончания</label>
+                        <InputDate class="form-input" @bind-Value="model.EndDate" />
+                    </div>
+                </div>
+
+                <div class="employees-select">
+                    <h3>Исполнители задачи</h3>
+
+                    <div class="employees-grid">
+                        @foreach (var employee in employees)
+                        {
+                            <label class="employee-check">
+                                <input type="checkbox"
+                                       checked="@selectedEmployeeIds.Contains(employee.Id)"
+                                       @onchange="e => ToggleEmployee(employee.Id, e)" />
+
+                                <span>
+                                    <strong>@employee.LastName @employee.FirstName</strong>
+                                    <small>@employee.Position</small>
+                                </span>
+                            </label>
+                        }
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button class="primary-btn" type="submit">Сохранить</button>
+                    <button class="secondary-btn" type="button" @onclick="Cancel">Отмена</button>
+                </div>
+            </EditForm>
+        </section>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <p class="error-message">@error</p>
+    }
+
+</div>
+@code {
+    private static string TranslateTaskStatus(string status)
+    {
+        return status switch
+        {
+            "New" => "Новая",
+            "InProgress" => "В работе",
+            "Review" => "На проверке",
+            "Done" => "Выполнена",
+            "Cancelled" => "Отменена",
+            _ => status
+        };
+    }
+
+    private static string GetTaskStatusClass(string status)
+    {
+        return status switch
+        {
+            "New" => "status-new",
+            "InProgress" => "status-progress",
+            "Review" => "status-review",
+            "Done" => "status-done",
+            "Cancelled" => "status-cancelled",
+            _ => ""
+        };
+    }
+    private List<WorkTask> tasks = new();
+    private List<Project> projects = new();
+    private List<Employee> employees = new();
+    private List<int> selectedEmployeeIds = new();
+
+    private WorkTask model = new();
+    private bool editing;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        tasks = await TaskService.GetAllAsync();
+        projects = await ProjectService.GetAllAsync();
+        employees = await EmployeeService.GetAllAsync();
+    }
+
+    private void CreateNew()
+    {
+        selectedEmployeeIds = new();
+
+        model = new WorkTask
+        {
+            StartDate = DateTime.Today,
+            Status = "New"
+        };
+
+        editing = true;
+        error = null;
+    }
+
+    private async Task Edit(WorkTask task)
+    {
+        model = new WorkTask
+        {
+            Id = task.Id,
+            Title = task.Title,
+            Description = task.Description,
+            ProjectId = task.ProjectId,
+            StartDate = task.StartDate,
+            EndDate = task.EndDate,
+            Status = task.Status
+        };
+
+        selectedEmployeeIds = await TaskService.GetAssignedEmployeeIdsAsync(task.Id);
+
+        editing = true;
+        error = null;
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            if (model.ProjectId == 0)
+            {
+                error = "Выберите проект";
+                return;
+            }
+
+            int taskId;
+
+            if (model.Id == 0)
+            {
+                taskId = await TaskService.CreateAsync(model);
+            }
+            else
+            {
+                await TaskService.UpdateAsync(model);
+                taskId = model.Id;
+            }
+
+            await TaskService.AssignEmployeesAsync(taskId, selectedEmployeeIds);
+
+            tasks = await TaskService.GetAllAsync();
+            editing = false;
+            error = null;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task Delete(int id)
+    {
+        await TaskService.DeleteAsync(id);
+        tasks = await TaskService.GetAllAsync();
+    }
+
+    private void Cancel()
+    {
+        editing = false;
+        error = null;
+    }
+
+    private void ToggleEmployee(int employeeId, ChangeEventArgs e)
+    {
+        var isChecked = e.Value is bool value && value;
+
+        if (isChecked)
+        {
+            if (!selectedEmployeeIds.Contains(employeeId))
+                selectedEmployeeIds.Add(employeeId);
+        }
+        else
+        {
+            selectedEmployeeIds.Remove(employeeId);
+        }
+    }
+}
