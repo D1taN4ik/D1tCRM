@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16
+    container_name: d1tcrm-db
+    restart: always
+
+    environment:
+      POSTGRES_DB: d1tcrm
+      POSTGRES_USER: d1tcrm_user
+      POSTGRES_PASSWORD: d1tcrm_password
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - d1tcrm_pgdata:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U d1tcrm_user -d d1tcrm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: d1tcrm-app
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      ASPNETCORE_URLS: "http://+:8080"
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=d1tcrm;Username=d1tcrm_user;Password=d1tcrm_password"
+
+volumes:
+  d1tcrm_pgdata:

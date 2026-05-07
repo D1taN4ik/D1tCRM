@@ -1,0 +1,323 @@
+﻿@page "/employees"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin,Manager")]
+<PageTitle>Сотрудники - D1tCRM</PageTitle>
+
+@using System.ComponentModel.DataAnnotations
+@using D1tCRM.Data.Entities
+@using D1tCRM.Services.Employees
+
+@inject IEmployeeService EmployeeService
+
+<div class="employees-page">
+
+    <section class="hero-card">
+        <div>
+            <p class="eyebrow">D1tCRM / Команда</p>
+            <h1>Сотрудники</h1>
+            <p>
+                Управление сотрудниками, аккаунтами, ролями доступа и кадровой информацией.
+            </p>
+        </div>
+
+        <button class="primary-btn" @onclick="CreateNew">
+            ➕ Добавить сотрудника
+        </button>
+    </section>
+
+    <section class="employees-card">
+        <table>
+            <thead>
+                <tr>
+                    <th>ФИО</th>
+                    <th>Email</th>
+                    <th>Должность</th>
+                    <th>Зарплата</th>
+                    <th></th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @foreach (var emp in employees)
+                {
+                    <tr>
+                        <td>
+                            <div class="employee-name">
+                                <span class="avatar">@GetInitials(emp)</span>
+                                <span>@emp.LastName @emp.FirstName @emp.MiddleName</span>
+                            </div>
+                        </td>
+
+                        <td class="muted">@emp.User?.Email</td>
+                        <td>@emp.Position</td>
+                        <td>@emp.Salary.ToString("N0") ₽</td>
+
+                        <td class="actions-cell">
+                            <button class="secondary-btn" @onclick="async () => await Edit(emp)">✏️</button>
+                            <button class="danger-btn" @onclick="() => Delete(emp.Id)">🗑</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </section>
+
+    @if (editing)
+    {
+        <section class="form-card">
+            <div class="form-header">
+                <h2>Создать сотрудника</h2>
+                <p>После сохранения будет создан сотрудник и аккаунт для входа.</p>
+            </div>
+
+            <EditForm Model="createModel" OnValidSubmit="Save" FormName="employeeForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="form-grid">
+                    <InputText class="form-input" @bind-Value="createModel.LastName" placeholder="Фамилия" />
+                    <InputText class="form-input" @bind-Value="createModel.FirstName" placeholder="Имя" />
+                    <InputText class="form-input" @bind-Value="createModel.MiddleName" placeholder="Отчество" />
+                    <InputText class="form-input" @bind-Value="createModel.Position" placeholder="Должность" />
+                    <InputNumber class="form-input" @bind-Value="createModel.Salary" />
+                    <InputText class="form-input" @bind-Value="createModel.Email" placeholder="Email" />
+                    <InputText class="form-input" @bind-Value="createModel.Password" type="password" placeholder="Пароль" />
+
+                    <select class="form-input" @bind="createModel.Role">
+                        <option value="Employee">Сотрудник</option>
+                        <option value="Manager">Менеджер</option>
+                        <option value="Admin">Администратор</option>
+                    </select>
+                </div>
+
+                <div class="form-actions">
+                    <button class="primary-btn" type="submit">Сохранить</button>
+                    <button class="secondary-btn" type="button" @onclick="Cancel">Отмена</button>
+                </div>
+            </EditForm>
+        </section>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <p class="error-message">@error</p>
+    }
+    @if (editingExisting)
+    {
+        <section class="form-card">
+            <div class="form-header">
+                <h2>Редактировать сотрудника</h2>
+                <p>Можно изменить данные сотрудника, email, пароль и роль доступа.</p>
+            </div>
+
+            <EditForm Model="editModel" OnValidSubmit="UpdateEmployee" FormName="editEmployeeForm">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="form-grid">
+                    <InputText class="form-input" @bind-Value="editModel.LastName" placeholder="Фамилия" />
+                    <InputText class="form-input" @bind-Value="editModel.FirstName" placeholder="Имя" />
+                    <InputText class="form-input" @bind-Value="editModel.MiddleName" placeholder="Отчество" />
+                    <InputText class="form-input" @bind-Value="editModel.Position" placeholder="Должность" />
+                    <InputNumber class="form-input" @bind-Value="editModel.Salary" />
+
+                    <InputText class="form-input" @bind-Value="editModel.Email" placeholder="Email" />
+                    <InputText class="form-input" @bind-Value="editModel.NewPassword" type="password" placeholder="Новый пароль, если нужно изменить" />
+
+                    <select class="form-input" @bind="editModel.Role">
+                        <option value="Employee">Сотрудник</option>
+                        <option value="Manager">Менеджер</option>
+                        <option value="Admin">Администратор</option>
+                    </select>
+                </div>
+
+                <div class="form-actions">
+                    <button class="primary-btn" type="submit">Сохранить изменения</button>
+                    <button class="secondary-btn" type="button" @onclick="CancelEdit">Отмена</button>
+                </div>
+            </EditForm>
+        </section>
+    }
+</div>
+@code {
+    private EditEmployeeForm editModel = new();
+    private bool editingExisting;
+    private async Task UpdateEmployee()
+    {
+        try
+        {
+            await EmployeeService.UpdateWithUserAsync(
+                editModel.Id,
+                editModel.LastName,
+                editModel.FirstName,
+                editModel.MiddleName,
+                editModel.Position,
+                editModel.Salary,
+                editModel.Email,
+                editModel.NewPassword,
+                editModel.Role
+            );
+
+            employees = await EmployeeService.GetAllAsync();
+
+            editingExisting = false;
+            error = null;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private void CancelEdit()
+    {
+        editingExisting = false;
+        error = null;
+    }
+    private async Task Edit(Employee emp)
+    {
+        var fullEmployee = await EmployeeService.GetByIdAsync(emp.Id);
+
+        if (fullEmployee is null)
+            return;
+
+        var role = "Employee";
+
+        if (fullEmployee.User is not null)
+        {
+            // временно роль можно подставлять вручную, ниже сделаем сервисный метод для получения роли
+            role = "Employee";
+        }
+
+        editModel = new EditEmployeeForm
+        {
+            Id = fullEmployee.Id,
+            LastName = fullEmployee.LastName,
+            FirstName = fullEmployee.FirstName,
+            MiddleName = fullEmployee.MiddleName,
+            Position = fullEmployee.Position,
+            Salary = fullEmployee.Salary,
+            Email = fullEmployee.User?.Email ?? "",
+            NewPassword = "",
+            Role = role
+        };
+
+        editingExisting = true;
+        editing = false;
+        error = null;
+    }
+    public class EditEmployeeForm
+    {
+        public int Id { get; set; }
+
+        [Required]
+        public string LastName { get; set; } = string.Empty;
+
+        [Required]
+        public string FirstName { get; set; } = string.Empty;
+
+        public string? MiddleName { get; set; }
+
+        [Required]
+        public string Position { get; set; } = string.Empty;
+
+        public decimal Salary { get; set; }
+
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        public string? NewPassword { get; set; }
+
+        [Required]
+        public string Role { get; set; } = "Employee";
+    }
+
+    private static string GetInitials(Employee employee)
+    {
+        var first = string.IsNullOrWhiteSpace(employee.FirstName) ? "" : employee.FirstName[0].ToString();
+        var last = string.IsNullOrWhiteSpace(employee.LastName) ? "" : employee.LastName[0].ToString();
+
+        return $"{last}{first}".ToUpper();
+    }
+    private List<Employee> employees = new();
+    private CreateEmployeeForm createModel = new();
+    private bool editing;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        employees = await EmployeeService.GetAllAsync();
+    }
+
+    private void CreateNew()
+    {
+        createModel = new CreateEmployeeForm();
+        editing = true;
+        editingExisting = false;
+        error = null;
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            await EmployeeService.CreateWithUserAsync(
+                createModel.LastName,
+                createModel.FirstName,
+                createModel.MiddleName,
+                createModel.Position,
+                createModel.Salary,
+                createModel.Email,
+                createModel.Password,
+                createModel.Role
+            );
+            employees = await EmployeeService.GetAllAsync();
+            editing = false;
+            error = null;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task Delete(int id)
+    {
+        await EmployeeService.DeleteAsync(id);
+        employees = await EmployeeService.GetAllAsync();
+    }
+
+    private void Cancel()
+    {
+        editing = false;
+        error = null;
+    }
+
+    public class CreateEmployeeForm
+    {
+        [Required]
+        public string LastName { get; set; } = string.Empty;
+
+        [Required]
+        public string FirstName { get; set; } = string.Empty;
+
+        public string? MiddleName { get; set; }
+
+        [Required]
+        public string Position { get; set; } = string.Empty;
+
+        public decimal Salary { get; set; }
+
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [Required]
+        [MinLength(8)]
+        public string Password { get; set; } = string.Empty;
+
+        [Required]
+        public string Role { get; set; } = "Employee";
+    }
+}
