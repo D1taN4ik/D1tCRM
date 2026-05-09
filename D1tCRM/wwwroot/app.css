@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 h1:focus {
     outline: none;
 }
@@ -104,7 +103,6 @@ body {
     overflow-x: hidden;
 }
 
-    /* Дополнительное свечение */
     body::before {
         content: "";
         position: fixed;
@@ -114,7 +112,6 @@ body {
         z-index: -1;
     }
 
-    /* Красивый blur-слой */
     body::after {
         content: "";
         position: fixed;
@@ -127,4 +124,3 @@ body {
         z-index: -1;
         pointer-events: none;
     }
->>>>>>> Update app.cs
